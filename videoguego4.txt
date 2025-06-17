@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Parkour Pro</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #111;
+    }
+    canvas {
+      display: block;
+    }
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: sans-serif;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    Puntos: <span id="score">0</span> |
+    Récord: <span id="highscore">0</span>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const scoreDisplay = document.getElementById("score");
+    const highscoreDisplay = document.getElementById("highscore");
+
+    const sounds = {
+      jump: new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_631f6ecff3.mp3"),
+      death: new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_252174ec8f.mp3")
+    };
+
+    let score = 0;
+    let highscore = localStorage.getItem("parkour_highscore") || 0;
+    highscoreDisplay.textContent = highscore;
+
+    const player = {
+      x: 100,
+      y: 0,
+      width: 50,
+      height: 50,
+      velocityX: 0,
+      velocityY: 0,
+      gravity: 0.6,
+      speed: 5,
+      jumpPower: -12,
+      jumpCount: 0,
+      maxJumps: 2,
+      color: "#00ff88"
+    };
+
+    const keys = { left: false, right: false };
+
+    const platforms = [];
+    const enemies = [];
+    const world = { scrollX: 0 };
+
+    // Generar plataformas iniciales
+    for (let i = 0; i < 10; i++) {
+      generatePlatform(i * 300);
+    }
+
+    function generatePlatform(x) {
+      const y = canvas.height - 100 - Math.random() * 300;
+      const width = 100 + Math.random() * 100;
+      platforms.push({ x, y, width, height: 20 });
+
+      // A veces generar un pico encima
+      if (Math.random() < 0.3) {
+        enemies.push({ x: x + width / 2 - 10, y: y - 30, width: 20, height: 30 });
+      }
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "ArrowLeft") keys.left = true;
+      if (e.code === "ArrowRight") keys.right = true;
+      if (e.code === "Space") {
+        if (player.jumpCount < player.maxJumps) {
+          player.velocityY = player.jumpPower;
+          player.jumpCount++;
+          sounds.jump.play();
+        }
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "ArrowLeft") keys.left = false;
+      if (e.code === "ArrowRight") keys.right = false;
+    });
+
+    function update() {
+      // Movimiento horizontal
+      if (keys.left) player.velocityX = -player.speed;
+      else if (keys.right) player.velocityX = player.speed;
+      else player.velocityX = 0;
+
+      player.x += player.velocityX;
+      player.velocityY += player.gravity;
+      player.y += player.velocityY;
+
+      // Scroll lateral
+      if (player.x > canvas.width / 2) {
+        world.scrollX -= player.velocityX;
+        player.x = canvas.width / 2;
+      }
+
+      // Plataformas y colisiones
+      let grounded = false;
+      for (let plat of platforms) {
+        const px = plat.x + world.scrollX;
+        if (
+          player.x < px + plat.width &&
+          player.x + player.width > px &&
+          player.y + player.height <= plat.y + player.velocityY &&
+          player.y + player.height + player.velocityY >= plat.y
+        ) {
+          player.y = plat.y - player.height;
+          player.velocityY = 0;
+          player.jumpCount = 0;
+          grounded = true;
+          score++;
+          if (score > highscore) {
+            highscore = score;
+            localStorage.setItem("parkour_highscore", highscore);
+          }
+        }
+      }
+
+      // Enemigos
+      for (let spike of enemies) {
+        const sx = spike.x + world.scrollX;
+        if (
+          player.x < sx + spike.width &&
+          player.x + player.width > sx &&
+          player.y < spike.y + spike.height &&
+          player.y + player.height > spike.y
+        ) {
+          sounds.death.play();
+          alert("💀 Perdiste. Puntos: " + score);
+          document.location.reload();
+        }
+      }
+
+      // Caída
+      if (player.y > canvas.height) {
+        sounds.death.play();
+        alert("💀 Caíste. Puntos: " + score);
+        document.location.reload();
+      }
+
+      // Nueva plataforma si avanzas mucho
+      if (platforms[platforms.length - 1].x + world.scrollX < canvas.width) {
+        generatePlatform(platforms[platforms.length - 1].x + 300);
+      }
+
+      scoreDisplay.textContent = score;
+      highscoreDisplay.textContent = highscore;
+    }
+
+    function drawPlayer() {
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+    }
+
+    function drawPlatforms() {
+      ctx.fillStyle = "#444";
+      for (let plat of platforms) {
+        ctx.fillRect(plat.x + world.scrollX, plat.y, plat.width, plat.height);
+      }
+    }
+
+    function drawEnemies() {
+      ctx.fillStyle = "#ff4444";
+      for (let spike of enemies) {
+        ctx.beginPath();
+        ctx.moveTo(spike.x + world.scrollX, spike.y + spike.height);
+        ctx.lineTo(spike.x + world.scrollX + spike.width / 2, spike.y);
+        ctx.lineTo(spike.x + world.scrollX + spike.width, spike.y + spike.height);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      update();
+      drawPlatforms();
+      drawEnemies();
+      drawPlayer();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
